@@ -1,10 +1,15 @@
+import asyncio
 import sqlite3
 import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from costco_etl.storage.paths import DB_PATH
+from costco_etl.main_runner import run_pipeline
+from costco_etl.observability.run_context import RunContext
 from typing import Any
 from fastapi import Query
+
+_etl_lock = asyncio.Lock()
 
 def get_connection():
     conn = sqlite3.connect(str(DB_PATH), timeout=30)
@@ -127,3 +132,32 @@ def get_category_metrics(category_url: str = Query(..., min_length=1)) -> dict[s
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+ETL_TIMEOUT_S = 120
+
+
+@app.post("/run-etl")
+async def run_etl(demo: bool = False):
+    if _etl_lock.locked():
+        raise HTTPException(status_code=409, detail="ETL pipeline already running")
+
+    async with _etl_lock:
+        ctx = RunContext(run_name="etl_api_trigger", console=False)
+        try:
+            await asyncio.wait_for(
+                run_pipeline(ctx, demo=demo),
+                timeout=ETL_TIMEOUT_S,
+            )
+            report = ctx.finalize(status="success")
+        except asyncio.TimeoutError:
+            report = ctx.finalize(status="error")
+            raise HTTPException(
+                status_code=504,
+                detail=f"ETL pipeline timed out after {ETL_TIMEOUT_S}s",
+            )
+        except Exception as e:
+            ctx.finalize(status="error")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    return report

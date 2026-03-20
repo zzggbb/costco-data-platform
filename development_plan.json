@@ -118,7 +118,7 @@
       "cleanup": "None — additive change."
     },
     "zombie_protection": "Request timeout via middleware or asyncio.wait_for(). If the full crawl exceeds 60s, return partial results with error status.",
-    "status": "TODO"
+    "status": "DONE"
   },
   {
     "id": "COST-007",
