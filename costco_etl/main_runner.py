@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 
 from costco_etl.scraping.costco_scraper import scrape_costco_catalog
 from costco_etl.category_structuring.build_category_tree import build_category_tree
@@ -18,10 +19,10 @@ def count_nodes(tree: dict) -> int:
         count += count_nodes(node.get("children", {}))
     return count
 
-def run_pipeline(ctx: RunContext, demo: bool):
+async def run_pipeline(ctx: RunContext, demo: bool):
 
     with ctx.span("scrape_catalog", demo_mode=demo):
-        products_flat, parsed_megamenu, scrape_metrics = scrape_costco_catalog(ctx, demo=demo)
+        products_flat, parsed_megamenu, scrape_metrics = await scrape_costco_catalog(ctx, demo=demo)
     ctx.report["stages"]["scrape_catalog"].update(scrape_metrics)
 
     with ctx.span("category_structuring") as _:
@@ -82,7 +83,7 @@ def main():
     ctx = RunContext(run_name="costco_data_etl_main")
 
     try:
-        run_pipeline(ctx, demo=args.demo)
+        asyncio.run(run_pipeline(ctx, demo=args.demo))
         ctx.finalize(status="success")
     except Exception:
         ctx.finalize(status="error")

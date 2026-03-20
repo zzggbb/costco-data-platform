@@ -98,7 +98,7 @@
       "cleanup": "Add 'import asyncio'. Change main() to use asyncio.run()."
     },
     "zombie_protection": "Top-level asyncio.run() with a global timeout wrapper if needed. ctx.span() still captures duration and exceptions — no observability changes required.",
-    "status": "TODO"
+    "status": "DONE"
   },
   {
     "id": "COST-006",
