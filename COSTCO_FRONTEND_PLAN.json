@@ -1,0 +1,134 @@
+[
+  {
+    "id": "FRONT-001",
+    "component": "frontend/src/index.css + frontend/src/App.css + frontend/vite.config.ts",
+    "difficulty": "LOW",
+    "description": "Purge the Vite starter template. Delete App.css and starter assets. Configure Tailwind v4 with a dark-mode-first design system using Costco brand colors (red #e31837, navy #005DAA, white) as CSS custom properties. Tremor requires specific Tailwind classes — ensure its styles are imported correctly in index.css alongside the @import 'tailwindcss' directive.",
+    "architecture_proposal": {
+      "function_signature": "N/A — CSS + config only",
+      "protocol_insight": "Tremor v3 ships its own component styles but relies on Tailwind for layout utilities. With Tailwind v4 via @tailwindcss/vite, there is no tailwind.config file — all customization goes through @theme in index.css. The dark theme must be the default (dashboard convention).",
+      "implementation": [
+        "1. Delete src/App.css and src/assets/react.svg, src/assets/vite.svg (starter artifacts)",
+        "2. In src/index.css, after @import 'tailwindcss', add @theme block defining --color-costco-red, --color-costco-navy, --color-surface-*, --color-text-* custom properties for the dark palette",
+        "3. Set html/body base styles: bg-zinc-950, text-zinc-100, font-family Inter/system-ui, antialiased",
+        "4. Import Tremor CSS: @import '@tremor/react/dist/esm/index.css' (required for Tremor component styles)",
+        "5. Add Vite proxy config in vite.config.ts: server.proxy '/api' → 'http://localhost:8000' to avoid CORS during dev"
+      ],
+      "why_this_pattern": "Dark-mode dashboards reduce eye strain during extended monitoring. CSS custom properties allow Tremor components to inherit the brand palette without overriding every component individually. The Vite proxy eliminates CORS configuration complexity during development.",
+      "cleanup": "Delete App.css. Remove unused starter assets. Keep hero.png if it will be used as a brand element."
+    },
+    "zombie_protection": "N/A — static config.",
+    "status": "TODO"
+  },
+  {
+    "id": "FRONT-002",
+    "component": "frontend/src/stores/etlStore.ts",
+    "difficulty": "MEDIUM",
+    "description": "Create the Zustand store that manages all ETL state: the last report (with delta), loading state, error state, and a strict 20-second cooldown timer. The store exposes a single triggerEtl() action that POSTs to /run-etl, manages the cooldown countdown, and stores the response. All components subscribe to slices of this store.",
+    "architecture_proposal": {
+      "function_signature": "export const useEtlStore = create<EtlState>()((set, get) => ({...}))",
+      "protocol_insight": "Zustand v5 supports the subscribeWithSelector middleware for granular re-renders. The cooldown timer uses setInterval inside the action — when triggerEtl() fires, it sets cooldownSeconds=20 and decrements every second via setInterval until 0. The store holds the FULL report JSON from POST /run-etl, including report.delta (price_drops, new_items, removed_items, price_increases, summary) and report.stages (scrape_catalog, category_structuring, storage with timing data).",
+      "implementation": [
+        "1. Define TypeScript interfaces: EtlReport (matching the exact backend JSON shape), DeltaSummary, PriceDrop, NewItem, RemovedItem, PriceIncrease",
+        "2. State shape: { report: EtlReport | null, isLoading: boolean, error: string | null, cooldownSeconds: number }",
+        "3. Action triggerEtl(demo?: boolean): if cooldownSeconds > 0 return early. Set isLoading=true. POST /api/run-etl?demo={demo}. On success: set report, clear error, start 20s countdown interval. On failure: set error string. Finally: set isLoading=false",
+        "4. The cooldown interval: setInterval(() => set(s => ({cooldownSeconds: s.cooldownSeconds - 1})), 1000). Clear interval when cooldownSeconds hits 0",
+        "5. Export selector hooks: useReport(), useDelta(), useIsLoading(), useCooldown() for component subscriptions"
+      ],
+      "why_this_pattern": "Single source of truth. Every component reads from the same store — no prop drilling, no context providers. The cooldown is enforced in the store action itself so it cannot be bypassed by any UI component. Zustand's minimal API means the entire store is ~60 lines.",
+      "cleanup": "N/A — new file."
+    },
+    "zombie_protection": "fetch() with AbortController: if the request exceeds 90s, abort and set error='Pipeline timed out'. The backend has its own 120s timeout, but the frontend should fail slightly earlier to show a user-friendly message.",
+    "status": "TODO"
+  },
+  {
+    "id": "FRONT-003",
+    "component": "frontend/src/components/UpdateButton.tsx",
+    "difficulty": "MEDIUM",
+    "description": "The 'Update Market Data' trigger button. This is the most important interactive element — it fires the ETL pipeline and provides real-time feedback. Three visual states: idle (ready to click), loading (spinner + 'Scraping...'), cooldown (countdown timer, disabled). Uses Tremor's Button component with Costco-red accent.",
+    "architecture_proposal": {
+      "function_signature": "export function UpdateButton(): JSX.Element",
+      "protocol_insight": "The button subscribes to useEtlStore for isLoading, cooldownSeconds, and error. During loading, it shows an animated spinner icon and the text 'Scraping Costco...'. During cooldown, it shows 'Wait {N}s' with a circular countdown indicator. On error, a red toast/badge appears below the button with the error message. The button is always disabled when isLoading || cooldownSeconds > 0.",
+      "implementation": [
+        "1. Import { useEtlStore } and Tremor's Button component",
+        "2. Subscribe to isLoading, cooldownSeconds, error, triggerEtl from the store",
+        "3. Render Tremor Button with onClick={() => triggerEtl(true)} (demo=true for now, configurable later)",
+        "4. Dynamic label: idle → 'Update Market Data', loading → 'Scraping Costco...', cooldown → `Wait ${cooldownSeconds}s`",
+        "5. Loading state: add a spinning ArrowPathIcon (from @heroicons/react) before the label",
+        "6. Error display: conditional red text below button showing last error message"
+      ],
+      "why_this_pattern": "Three-state button is the standard pattern for expensive server actions. The cooldown prevents VPS abuse and provides visual feedback that the system is protecting itself. Heroicons integrates natively with Tremor's icon prop system.",
+      "cleanup": "N/A — new component."
+    },
+    "zombie_protection": "Button is forcefully disabled via the disabled prop when isLoading || cooldownSeconds > 0. Even if the store action has a guard, the UI enforces it visually.",
+    "status": "TODO"
+  },
+  {
+    "id": "FRONT-004",
+    "component": "frontend/src/components/MetricsBar.tsx",
+    "difficulty": "LOW",
+    "description": "A horizontal row of Tremor Card/Metric components showing the macro KPIs from the last ETL report. Cards: Total Products (report.delta.summary.current_count), Price Drops (price_drop_count), New Items (new_count), Removed (removed_count), Scrape Duration (report.stages.scrape_catalog.duration_s). Each card uses Tremor's built-in delta indicator to show change direction.",
+    "architecture_proposal": {
+      "function_signature": "export function MetricsBar(): JSX.Element",
+      "protocol_insight": "Tremor's Card + Metric components render a KPI with a title, value, and optional delta badge (increase/decrease/unchanged). The delta.summary object maps 1:1 to the cards. When report is null (no run yet), cards show '—' placeholder values with a muted style. The scrape duration card formats seconds to 1 decimal place.",
+      "implementation": [
+        "1. Subscribe to report from useEtlStore",
+        "2. Extract delta.summary and stages.scrape_catalog.duration_s from report",
+        "3. Render a responsive grid (grid-cols-2 md:grid-cols-5) of Tremor Card components",
+        "4. Each card: Metric title, formatted value, color coding (green for price drops, red for removed, blue for new)",
+        "5. Null state: render cards with '—' values and opacity-50 to indicate 'awaiting first run'",
+        "6. Animate value changes with a brief CSS transition on the metric text"
+      ],
+      "why_this_pattern": "Metric cards are the universal dashboard pattern for at-a-glance KPIs. Tremor's Card component handles responsive sizing, borders, and typography. Five cards give an instant pulse of the entire ETL run without scrolling.",
+      "cleanup": "N/A — new component."
+    },
+    "zombie_protection": "Defensive optional chaining on all report?.delta?.summary?.* accesses. If the report shape is unexpected, cards show '—' rather than crashing.",
+    "status": "TODO"
+  },
+  {
+    "id": "FRONT-005",
+    "component": "frontend/src/components/ArbitrageTable.tsx",
+    "difficulty": "CRITICAL",
+    "description": "The core value proposition — a sortable data table consuming the price_drops array from the delta report. Each row shows: product name, old price, new price, absolute savings ($), percentage savings (%), and a visual savings badge. Sorted by largest savings first (matches backend sort). Uses Tremor's Table component with striped rows and hover highlights. This is the table a hiring manager will stare at.",
+    "architecture_proposal": {
+      "function_signature": "export function ArbitrageTable(): JSX.Element",
+      "protocol_insight": "The price_drops array from compute_delta() contains: {id, name, old_price, new_price, delta, delta_pct}. The table renders this directly with Tremor's Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell components. Savings are shown as green badges with negative values (e.g. '-$10.00 / -33.4%'). An empty state shows 'No price drops detected — run an update to capture delta.' A secondary collapsed section shows price_increases for completeness.",
+      "implementation": [
+        "1. Subscribe to report.delta.price_drops and report.delta.price_increases from useEtlStore",
+        "2. Render Tremor Table with columns: Product, Old Price, New Price, Savings ($), Savings (%), ID",
+        "3. Format prices with Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'})",
+        "4. Savings column: green Badge for drops, red Badge for increases",
+        "5. Empty state: centered text with ArrowPathIcon suggesting an update run",
+        "6. Add column header click to toggle sort direction (client-side sort on any column)",
+        "7. Collapsible 'Price Increases' section below with same table format but red-themed"
+      ],
+      "why_this_pattern": "Tremor Table is purpose-built for data-dense dashboards. It handles responsive overflow, striped rows, and consistent typography out of the box. The badge-per-row pattern draws the eye to the largest arbitrage opportunities instantly. Client-side sorting is sufficient since the dataset is already in memory.",
+      "cleanup": "N/A — new component."
+    },
+    "zombie_protection": "price_drops defaults to [] if null/undefined. Table renders gracefully with empty body and a 'no data' message. Truncate product names at 80 chars with title tooltip for full text.",
+    "status": "TODO"
+  },
+  {
+    "id": "FRONT-006",
+    "component": "frontend/src/App.tsx + frontend/index.html",
+    "difficulty": "MEDIUM",
+    "description": "Assemble the final dashboard layout. Delete the entire Vite starter template from App.tsx. Build a single-page layout: fixed top bar with logo + UpdateButton, MetricsBar below, ArbitrageTable as the main content area. Update index.html title and favicon. The layout must be production-ready — something you would present in a portfolio or a data engineering interview.",
+    "architecture_proposal": {
+      "function_signature": "export default function App(): JSX.Element",
+      "protocol_insight": "Single-page dashboard layout. No routing needed — everything renders on one screen. The top bar is a flex row with the Costco brand mark on the left and the UpdateButton on the right. Below it, the MetricsBar spans full width. The ArbitrageTable fills the remaining viewport. A subtle footer shows 'Last updated: {report.finished_at}' timestamp.",
+      "implementation": [
+        "1. Delete all starter template JSX from App.tsx",
+        "2. Top bar: fixed, dark bg, flex row — left: 'COSTCO ARBITRAGE' text/logo, right: <UpdateButton />",
+        "3. Main content: max-w-7xl mx-auto px-4 — <MetricsBar /> on top, <ArbitrageTable /> below",
+        "4. Footer bar: muted text with last run timestamp from report.finished_at, formatted via Intl.DateTimeFormat",
+        "5. Update index.html: <title>Costco Arbitrage Dashboard</title>, keep existing favicon.svg",
+        "6. Add responsive padding: on mobile the table scrolls horizontally, metrics stack 2-col",
+        "7. Add a 'New Items' and 'Removed Items' summary section between MetricsBar and ArbitrageTable using Tremor List component"
+      ],
+      "why_this_pattern": "Fixed top bar with action button is the standard SaaS dashboard pattern. Single-page layout avoids routing complexity for a tool with one purpose. max-w-7xl constrains readability on ultrawide monitors. The vertical flow (action → KPIs → data) mirrors how an operator processes information: trigger, assess, investigate.",
+      "cleanup": "Delete App.css import from App.tsx. Remove all Vite starter content."
+    },
+    "zombie_protection": "Entire app wrapped in an ErrorBoundary component that catches render errors and shows a fallback UI with the error message instead of a white screen.",
+    "status": "TODO"
+  }
+]

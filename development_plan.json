@@ -156,6 +156,6 @@
       "cleanup": "pip install -e . to rebuild local env."
     },
     "zombie_protection": "N/A — dependency management.",
-    "status": "TODO"
+    "status": "DONE"
   }
 ]
