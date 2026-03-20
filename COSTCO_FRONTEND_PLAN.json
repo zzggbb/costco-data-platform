@@ -61,7 +61,7 @@
       "cleanup": "N/A — new component."
     },
     "zombie_protection": "Button is forcefully disabled via the disabled prop when isLoading || cooldownSeconds > 0. Even if the store action has a guard, the UI enforces it visually.",
-    "status": "TODO"
+    "status": "DONE"
   },
   {
     "id": "FRONT-004",
