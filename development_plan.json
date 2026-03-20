@@ -138,7 +138,7 @@
       "cleanup": "None — additive to existing flow."
     },
     "zombie_protection": "If previous DB doesn't exist or is corrupt, snapshot returns empty dict — delta shows everything as 'new'. No crash path.",
-    "status": "TODO"
+    "status": "DONE"
   },
   {
     "id": "COST-008",

@@ -4,7 +4,7 @@ import asyncio
 from costco_etl.scraping.costco_scraper import scrape_costco_catalog
 from costco_etl.category_structuring.build_category_tree import build_category_tree
 from costco_etl.category_structuring.prune_category_tree import prune_category_tree
-from costco_etl.storage.init_db import recreate_costco_db
+from costco_etl.storage.init_db import recreate_costco_db, snapshot_previous_state, compute_delta
 from costco_etl.storage.persist_products import persist_products
 from costco_etl.storage.persist_product_categories import persist_product_categories
 from costco_etl.storage.persist_category_map import persist_category_map
@@ -41,6 +41,14 @@ async def run_pipeline(ctx: RunContext, demo: bool):
     })
 
     with ctx.span("storage"):
+        with ctx.span("snapshot_previous"):
+            previous_snapshot = snapshot_previous_state(DB_PATH)
+            ctx.event(
+                "snapshot_captured",
+                stage="snapshot_previous",
+                previous_product_count=len(previous_snapshot),
+            )
+
         with ctx.span("recreate_database", db_path=str(DB_PATH)):
             recreate_costco_db(DB_PATH)
 
@@ -68,6 +76,16 @@ async def run_pipeline(ctx: RunContext, demo: bool):
 
         with ctx.span("persist_category_metrics"):
             persist_category_metrics(DB_PATH, clean_category_tree)
+
+        with ctx.span("compute_delta"):
+            delta = compute_delta(previous_snapshot, products_flat)
+            ctx.event(
+                "delta_computed",
+                stage="compute_delta",
+                **delta["summary"],
+            )
+
+    ctx.report["delta"] = delta
 
 def main():
     parser = argparse.ArgumentParser(description="Costco ETL Runner")
