@@ -1,7 +1,10 @@
-import requests
+import asyncio
+import aiohttp
 from costco_etl.observability.run_context import RunContext
 
 BASE_URL = "https://search.costco.com/api/apps/www_costco_com/query/www_costco_com_navigation"
+
+ROWS_PER_PAGE = 24
 
 def _build_headers(api_key: str) -> dict:
     return {
@@ -32,90 +35,107 @@ def _build_params(category_url: str, start: int) -> dict:
                "847_NA-cor,847_NA-pharmacy,847_NA-wm,847_ss_u362-edi,847_wp_r458-edi,"
                "951-wm,952-wm,9847-wcs",
         "whloc": "1-wh",
-        "rows": 24,
+        "rows": ROWS_PER_PAGE,
         "url": category_url,
         "fq": '{!tag=item_program_eligibility}item_program_eligibility:("ShipIt")',
         "chdcategory": "true",
         "chdheader": "true",
     }
 
-def crawl_category(
+
+async def _fetch_page(
+    session: aiohttp.ClientSession,
+    headers: dict,
+    category_url: str,
+    start: int,
+) -> list:
+    params = _build_params(category_url, start=start)
+    async with session.get(BASE_URL, headers=headers, params=params) as resp:
+        resp.raise_for_status()
+        data = await resp.json()
+    return data.get("response", {}).get("docs", [])
+
+
+async def crawl_category(
+    session: aiohttp.ClientSession,
     api_key: str,
     category_url: str,
-    category_count: int,    
+    category_count: int,
     ctx: RunContext,
     demo: bool = False,
     max_demo_pages: int = 3,
 ) -> list:
 
     headers = _build_headers(api_key)
-    all_docs = []
 
-    # ---- First page ----
+    # ---- Probe: first page (sequential — we need numFound) ----
     params = _build_params(category_url, start=0)
+    async with session.get(BASE_URL, headers=headers, params=params) as resp:
+        resp.raise_for_status()
+        data = await resp.json()
 
-    response = requests.get(BASE_URL, headers=headers, params=params, timeout=15)
-    response.raise_for_status()
-
-    data = response.json()
     response_block = data.get("response", {})
-
     docs = response_block.get("docs", [])
     num_found = response_block.get("numFound", 0)
-
-    total_pages = (num_found // 24) + (1 if num_found % 24 else 0)
-    current_page = 1
+    total_pages = -(-num_found // ROWS_PER_PAGE)  # ceiling division
 
     if not docs:
         return []
-
-    all_docs.extend(docs)
 
     ctx.event(
         "crawl_page_fetched",
         stage="scrape_catalog",
         category=category_url,
-        page=current_page,
-        total_pages=total_pages
+        page=1,
+        total_pages=total_pages,
     )
 
-    # ---- Pagination ----
-    for start in range(24, num_found, 24):
-        current_page += 1
+    # ---- Fan-out: all remaining pages concurrently ----
+    offsets = list(range(ROWS_PER_PAGE, num_found, ROWS_PER_PAGE))
 
-        # 🔥 DEMO LIMIT CONTROL
-        if demo and current_page > max_demo_pages:
+    if demo:
+        max_remaining = max_demo_pages - 1  # page 1 already fetched
+        offsets = offsets[:max_remaining]
+
+        if len(offsets) < total_pages - 1:
             ctx.event(
                 "demo_pagination_stopped",
                 stage="scrape_catalog",
                 category=category_url,
-                stopped_at_page=current_page - 1,
+                stopped_at_page=len(offsets) + 1,
                 total_available_pages=total_pages,
-                max_demo_pages=max_demo_pages
+                max_demo_pages=max_demo_pages,
             )
 
-            break
+    tasks = [
+        _fetch_page(session, headers, category_url, start)
+        for start in offsets
+    ]
 
-        params = _build_params(category_url, start=start)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        response = requests.get(BASE_URL, headers=headers, params=params, timeout=15)
-        response.raise_for_status()
+    all_docs = list(docs)  # page 1 docs
 
-        page_data = response.json()
-        page_docs = page_data.get("response", {}).get("docs", [])
+    for i, result in enumerate(results):
+        if isinstance(result, BaseException):
+            ctx.event(
+                "crawl_page_failed",
+                level="ERROR",
+                stage="scrape_catalog",
+                category=category_url,
+                page=i + 2,
+                error=str(result),
+            )
+            continue
 
-        if not page_docs:
-            break
-
-        all_docs.extend(page_docs)
+        all_docs.extend(result)
 
         ctx.event(
             "crawl_page_fetched",
             stage="scrape_catalog",
             category=category_url,
-            page=current_page,
-            total_pages=total_pages
+            page=i + 2,
+            total_pages=total_pages,
         )
 
-    # ---- Integrity check (importante) ----
     return all_docs
