@@ -83,7 +83,7 @@
       "cleanup": "N/A — new component."
     },
     "zombie_protection": "Defensive optional chaining on all report?.delta?.summary?.* accesses. If the report shape is unexpected, cards show '--' rather than crashing.",
-    "status": "TODO"
+    "status": "DONE"
   },
   {
     "id": "FRONT-005",
@@ -106,7 +106,7 @@
       "cleanup": "N/A — new component."
     },
     "zombie_protection": "price_drops defaults to [] if null/undefined. Table renders gracefully with empty body and a 'no data' message. Truncate product names at 80 chars with title tooltip for full text.",
-    "status": "TODO"
+    "status": "DONE"
   },
   {
     "id": "FRONT-006",
