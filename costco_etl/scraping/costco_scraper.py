@@ -1,8 +1,12 @@
+import asyncio
+import aiohttp
+
 from costco_etl.scraping.get_key import run_get_key
 from costco_etl.scraping.get_megamenu import run_get_megamenu
 from costco_etl.scraping.parse_megamenu import run_parse_megamenu
 from costco_etl.scraping.navigation_crawler import crawl_category
 from costco_etl.observability.run_context import RunContext
+
 
 def _sanitize_unusual_terminators(obj):
     """
@@ -30,15 +34,16 @@ def _sanitize_unusual_terminators(obj):
 
     return obj
 
-def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "/jewelry.html"):
+
+async def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "/jewelry.html"):
 
     # -------------------------
-    # STEP 1 — API KEY
+    # STEP 1 — API KEY (sync bridge — COST-003 will make this native async)
     # -------------------------
-    api_key = run_get_key()
+    api_key = await asyncio.to_thread(run_get_key)
     if not api_key:
         raise RuntimeError("API key not found")
-    
+
     ctx.event(
         "api_key_resolved",
         stage="scrape_catalog",
@@ -48,20 +53,20 @@ def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "
     )
 
     # -------------------------
-    # STEP 2 — MEGAMENU
+    # STEP 2 — MEGAMENU (sync bridge — COST-004 will make this native async)
     # -------------------------
-    megamenu = run_get_megamenu(api_key=api_key)
+    megamenu = await asyncio.to_thread(run_get_megamenu, api_key)
     if not megamenu:
         raise RuntimeError("Megamenu not found")
 
     # -------------------------
-    # STEP 3 — PARSE MEGAMENU
+    # STEP 3 — PARSE MEGAMENU (pure CPU, no bridge needed)
     # -------------------------
     parsed = run_parse_megamenu(megamenu)
 
     if not parsed:
         raise RuntimeError("Parsed megamenu returned empty list")
-    
+
     ctx.event(
         "megamenu_parsed",
         stage="scrape_catalog",
@@ -69,7 +74,7 @@ def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "
         total_categories=len(parsed),
         demo_mode=demo
     )
-    
+
     # -------------------------
     # DEMO MODE FILTER
     # -------------------------
@@ -91,29 +96,53 @@ def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "
     )
 
     # -------------------------
-    # STEP 4 — CRAWL ALL CATEGORIES
+    # STEP 4 — CONCURRENT CATEGORY FAN-OUT
     # -------------------------
+    timeout = aiohttp.ClientTimeout(total=30, sock_read=15)
+    connector = aiohttp.TCPConnector(limit=0)
+
+    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+
+        coros = [
+            crawl_category(
+                session=session,
+                api_key=api_key,
+                category_url=category["url"],
+                category_count=category["count"],
+                ctx=ctx,
+                demo=demo,
+            )
+            for category in crawl_targets
+        ]
+
+        results = await asyncio.gather(*coros, return_exceptions=True)
+
+    # ---- Flatten successes, log failures ----
     all_products = []
+    failed_categories = 0
 
-    for i, category in enumerate(crawl_targets, start=1):
+    for i, result in enumerate(results):
+        if isinstance(result, BaseException):
+            failed_categories += 1
+            ctx.event(
+                "category_crawl_failed",
+                level="ERROR",
+                stage="scrape_catalog",
+                category=crawl_targets[i]["url"],
+                error_type=type(result).__name__,
+                error=str(result),
+            )
+            continue
 
-        url = category["url"]
-
-        docs = crawl_category(
-            api_key=api_key,
-            category_url=url,
-            category_count=category["count"],
-            ctx=ctx,
-            demo=demo
-        )
-
-        all_products.extend(docs)
+        all_products.extend(result)
 
     ctx.event(
         "crawl_completed",
         stage="scrape_catalog",
         level="INFO",
-        total_products_raw=len(all_products)
+        total_products_raw=len(all_products),
+        categories_succeeded=len(crawl_targets) - failed_categories,
+        categories_failed=failed_categories,
     )
 
     # -------------------------
@@ -128,10 +157,8 @@ def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "
             continue
 
         if pid not in unique:
-            # primera vez que vemos este producto
             unique[pid] = p
         else:
-            # ya existe → mergeamos categoryPath_ss
             existing = unique[pid]
             duplicate_counter += 1
 
@@ -166,6 +193,3 @@ def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "
         "total_unique": unique_count,
         "duplicates": duplicate_counter
     }
-
-if __name__ == "__main__":
-    scrape_costco_catalog()
