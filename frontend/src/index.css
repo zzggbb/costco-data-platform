@@ -1,1 +1,43 @@
 @import "tailwindcss";
+
+@theme {
+  --color-neon-green: #00ff00;
+  --color-neon-green-dim: #00cc00;
+  --color-blood-red: #ff0044;
+  --color-blood-red-dim: #cc0036;
+  --color-surface-primary: #09090b;
+  --color-surface-card: #18181b;
+  --color-surface-elevated: #27272a;
+  --color-border-subtle: #3f3f46;
+  --color-text-primary: #f4f4f5;
+  --color-text-muted: #a1a1aa;
+  --color-text-dim: #71717a;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-surface-primary);
+  color: var(--color-text-primary);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tremor dark-mode overrides */
+.tremor-Card-root,
+[class*="tremor"] {
+  --tremor-background-default: var(--color-surface-card) !important;
+  --tremor-background-muted: var(--color-surface-elevated) !important;
+  --tremor-border-default: var(--color-border-subtle) !important;
+  --tremor-content-default: var(--color-text-primary) !important;
+  --tremor-content-subtle: var(--color-text-muted) !important;
+}
+
+/* Tabular numbers for all metric values */
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+}

@@ -15,7 +15,9 @@
       "Bash(python -m costco_etl.main_runner --demo)",
       "Bash(python tests/test_cost_006_api_etl.py)",
       "Bash(python tests/test_cost_007_delta.py)",
-      "Bash(find /c/Users/leona/Desktop/costco-etl/frontend -not -path */node_modules/* -type f -o -type d)"
+      "Bash(find /c/Users/leona/Desktop/costco-etl/frontend -not -path */node_modules/* -type f -o -type d)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)"
     ]
   }
 }
