@@ -1,4 +1,4 @@
-import requests
+import aiohttp
 
 MEGAMENU_URL = (
     "https://search.costco.com/api/apps/www_costco_com/query/"
@@ -6,7 +6,7 @@ MEGAMENU_URL = (
 )
 
 
-def run_get_megamenu(api_key: str) -> dict:
+async def run_get_megamenu(session: aiohttp.ClientSession, api_key: str) -> dict:
     if not api_key:
         raise ValueError("api_key is required")
 
@@ -30,13 +30,6 @@ def run_get_megamenu(api_key: str) -> dict:
         "chdmegamenu": "true",
     }
 
-    response = requests.get(
-        MEGAMENU_URL,
-        headers=headers,
-        params=params,
-        timeout=15,
-    )
-
-    response.raise_for_status()
-
-    return response.json()
+    async with session.get(MEGAMENU_URL, headers=headers, params=params) as resp:
+        resp.raise_for_status()
+        return await resp.json()

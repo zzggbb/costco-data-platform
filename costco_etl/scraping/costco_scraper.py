@@ -37,72 +37,72 @@ def _sanitize_unusual_terminators(obj):
 
 async def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "/jewelry.html"):
 
-    # -------------------------
-    # STEP 1 — API KEY (sync bridge — COST-003 will make this native async)
-    # -------------------------
-    api_key = await asyncio.to_thread(run_get_key)
-    if not api_key:
-        raise RuntimeError("API key not found")
-
-    ctx.event(
-        "api_key_resolved",
-        stage="scrape_catalog",
-        level="INFO",
-        api_key=api_key,
-        demo_mode=demo
-    )
-
-    # -------------------------
-    # STEP 2 — MEGAMENU (sync bridge — COST-004 will make this native async)
-    # -------------------------
-    megamenu = await asyncio.to_thread(run_get_megamenu, api_key)
-    if not megamenu:
-        raise RuntimeError("Megamenu not found")
-
-    # -------------------------
-    # STEP 3 — PARSE MEGAMENU (pure CPU, no bridge needed)
-    # -------------------------
-    parsed = run_parse_megamenu(megamenu)
-
-    if not parsed:
-        raise RuntimeError("Parsed megamenu returned empty list")
-
-    ctx.event(
-        "megamenu_parsed",
-        stage="scrape_catalog",
-        level="INFO",
-        total_categories=len(parsed),
-        demo_mode=demo
-    )
-
-    # -------------------------
-    # DEMO MODE FILTER
-    # -------------------------
-    if demo:
-        crawl_targets = [c for c in parsed if c.get("url") == demo_url]
-
-        if not crawl_targets:
-            raise RuntimeError(f"Demo category {demo_url} not found in megamenu")
-
-        print(f"[DEMO MODE] Crawling only category: {demo_url}")
-    else:
-        crawl_targets = parsed
-
-    ctx.event(
-        "crawl_targets_resolved",
-        stage="scrape_catalog",
-        level="INFO",
-        categories_to_crawl=len(crawl_targets)
-    )
-
-    # -------------------------
-    # STEP 4 — CONCURRENT CATEGORY FAN-OUT
-    # -------------------------
     timeout = aiohttp.ClientTimeout(total=30, sock_read=15)
     connector = aiohttp.TCPConnector(limit=0)
 
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
 
+        # -------------------------
+        # STEP 1 — API KEY
+        # -------------------------
+        api_key = await run_get_key(session)
+        if not api_key:
+            raise RuntimeError("API key not found")
+
+        ctx.event(
+            "api_key_resolved",
+            stage="scrape_catalog",
+            level="INFO",
+            api_key=api_key,
+            demo_mode=demo
+        )
+
+        # -------------------------
+        # STEP 2 — MEGAMENU
+        # -------------------------
+        megamenu = await run_get_megamenu(session, api_key)
+        if not megamenu:
+            raise RuntimeError("Megamenu not found")
+
+        # -------------------------
+        # STEP 3 — PARSE MEGAMENU (pure CPU)
+        # -------------------------
+        parsed = run_parse_megamenu(megamenu)
+
+        if not parsed:
+            raise RuntimeError("Parsed megamenu returned empty list")
+
+        ctx.event(
+            "megamenu_parsed",
+            stage="scrape_catalog",
+            level="INFO",
+            total_categories=len(parsed),
+            demo_mode=demo
+        )
+
+        # -------------------------
+        # DEMO MODE FILTER
+        # -------------------------
+        if demo:
+            crawl_targets = [c for c in parsed if c.get("url") == demo_url]
+
+            if not crawl_targets:
+                raise RuntimeError(f"Demo category {demo_url} not found in megamenu")
+
+            print(f"[DEMO MODE] Crawling only category: {demo_url}")
+        else:
+            crawl_targets = parsed
+
+        ctx.event(
+            "crawl_targets_resolved",
+            stage="scrape_catalog",
+            level="INFO",
+            categories_to_crawl=len(crawl_targets)
+        )
+
+        # -------------------------
+        # STEP 4 — CONCURRENT CATEGORY FAN-OUT
+        # -------------------------
         coros = [
             crawl_category(
                 session=session,

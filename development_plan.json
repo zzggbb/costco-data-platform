@@ -59,7 +59,7 @@
       "cleanup": "Remove requests import."
     },
     "zombie_protection": "ClientTimeout(total=10) on this specific call. If costco.com is down, fail fast with RuntimeError.",
-    "status": "TODO"
+    "status": "DONE"
   },
   {
     "id": "COST-004",
@@ -78,7 +78,7 @@
       "cleanup": "Remove requests import."
     },
     "zombie_protection": "Same session-level timeout. Megamenu is a single call — if it fails, the pipeline aborts immediately.",
-    "status": "TODO"
+    "status": "DONE"
   },
   {
     "id": "COST-005",
