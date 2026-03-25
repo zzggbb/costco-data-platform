@@ -23,8 +23,8 @@ def persist_products(db_path: str, products_flat: list[dict]) -> None:
                 (
                     product_id,
                     name,
-                    _safe_float(product.get("minSalePrice")),
-                    _safe_float(product.get("maxSalePrice")),
+                    _safe_float(product.get("minSalePrice") or product.get("item_location_pricing_salePrice") or product.get("item_location_pricing_listPrice")),
+                    _safe_float(product.get("maxSalePrice") or product.get("item_location_pricing_salePrice")),
                     _safe_float(product.get("item_review_ratings")),
                     product.get("item_product_primary_image") or product.get("image"),
                     _safe_int(product.get("item_product_review_count")),

@@ -1,11 +1,17 @@
-import { Component } from 'react'
+import { Component, useState } from 'react'
 import type { ReactNode, ErrorInfo } from 'react'
 import { UpdateButton } from './components/UpdateButton'
 import { MetricsBar } from './components/MetricsBar'
 import { ArbitrageTable } from './components/ArbitrageTable'
+import { BusinessIntelligence } from './components/BusinessIntelligence'
 import { useEtlStore } from './stores/etlStore'
 import type { NewItem, RemovedItem } from './stores/etlStore'
-import { PlusCircleIcon, MinusCircleIcon } from '@heroicons/react/24/outline'
+import {
+  PlusCircleIcon,
+  MinusCircleIcon,
+  MagnifyingGlassIcon,
+  ChartBarSquareIcon,
+} from '@heroicons/react/24/outline'
 
 // ---- Formatting ----
 
@@ -173,27 +179,98 @@ function Footer() {
   )
 }
 
+// ---- Tab Definitions ----
+
+type TabId = 'catalog' | 'intelligence'
+
+const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  {
+    id: 'catalog',
+    label: 'Explorar Catálogo',
+    icon: <MagnifyingGlassIcon className="h-4 w-4" />,
+  },
+  {
+    id: 'intelligence',
+    label: 'Business Intelligence',
+    icon: <ChartBarSquareIcon className="h-4 w-4" />,
+  },
+]
+
 // ---- Main App ----
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<TabId>('catalog')
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-surface-primary flex flex-col">
-        {/* ---- Top Bar ---- */}
+        {/* ---- Sticky Header ---- */}
         <header className="sticky top-0 z-50 bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-800">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
             <h1 className="font-mono text-sm sm:text-base font-bold uppercase tracking-widest text-text-primary">
-              Costco Arbitrage
+              Costco Data ETL
             </h1>
             <UpdateButton />
           </div>
         </header>
 
-        {/* ---- Main Content ---- */}
+        {/* ---- Hero Section ---- */}
+        <section className="border-b border-zinc-800/60 bg-gradient-to-b from-zinc-900/60 to-surface-primary">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
+            <h2 className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-text-primary mb-3">
+              Costco Data ETL{' '}
+              <span className="text-neon-green">&</span>{' '}
+              Market Intelligence
+            </h2>
+            <p className="text-text-muted text-sm sm:text-base max-w-3xl leading-relaxed">
+              Motor de extracción sobre más de 1,400 categorías y decenas de miles de productos
+              de uno de los mayoristas más grandes del mundo. Explorá el catálogo en vivo o accedé
+              a la unidad de Business Intelligence para detectar anomalías de inventario, caídas de
+              precio y rotaciones reales en las últimas 24 horas.
+            </p>
+          </div>
+        </section>
+
+        {/* ---- Tab Bar ---- */}
+        <nav className="border-b border-zinc-800 bg-surface-primary/80 backdrop-blur-sm sticky top-[57px] z-40">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 flex gap-1">
+            {TABS.map((tab) => {
+              const active = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`
+                    flex items-center gap-2 px-4 py-3 font-mono text-sm uppercase tracking-wider
+                    border-b-2 transition-colors cursor-pointer
+                    ${
+                      active
+                        ? 'border-neon-green text-neon-green'
+                        : 'border-transparent text-text-dim hover:text-text-muted hover:border-zinc-600'
+                    }
+                  `}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+
+        {/* ---- Tab Content ---- */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-          <MetricsBar />
-          <InventoryChanges />
-          <ArbitrageTable />
+          {activeTab === 'catalog' && (
+            <>
+              <MetricsBar />
+              <InventoryChanges />
+              <ArbitrageTable />
+            </>
+          )}
+
+          {activeTab === 'intelligence' && (
+            <BusinessIntelligence />
+          )}
         </main>
 
         {/* ---- Footer ---- */}

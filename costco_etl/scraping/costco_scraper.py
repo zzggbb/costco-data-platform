@@ -38,7 +38,7 @@ def _sanitize_unusual_terminators(obj):
 async def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "/jewelry.html"):
 
     timeout = aiohttp.ClientTimeout(total=30, sock_read=15)
-    connector = aiohttp.TCPConnector(limit=0)
+    connector = aiohttp.TCPConnector(limit=15)
 
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
 
@@ -101,19 +101,23 @@ async def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: s
         )
 
         # -------------------------
-        # STEP 4 — CONCURRENT CATEGORY FAN-OUT
+        # STEP 4 — CONCURRENT CATEGORY FAN-OUT (THROTTLED)
         # -------------------------
-        coros = [
-            crawl_category(
-                session=session,
-                api_key=api_key,
-                category_url=category["url"],
-                category_count=category["count"],
-                ctx=ctx,
-                demo=demo,
-            )
-            for category in crawl_targets
-        ]
+        sem = asyncio.Semaphore(5)
+
+        async def bound_crawl(category):
+            async with sem:
+                await asyncio.sleep(1.5)
+                return await crawl_category(
+                    session=session,
+                    api_key=api_key,
+                    category_url=category["url"],
+                    category_count=category["count"],
+                    ctx=ctx,
+                    demo=demo,
+                )
+
+        coros = [bound_crawl(category) for category in crawl_targets]
 
         results = await asyncio.gather(*coros, return_exceptions=True)
 

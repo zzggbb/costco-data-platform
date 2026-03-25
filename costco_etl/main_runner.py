@@ -9,6 +9,7 @@ from costco_etl.storage.persist_products import persist_products
 from costco_etl.storage.persist_product_categories import persist_product_categories
 from costco_etl.storage.persist_category_map import persist_category_map
 from costco_etl.storage.persist_category_metrics import persist_category_metrics
+from costco_etl.storage.persist_arbitrage_daily import persist_arbitrage_daily
 from costco_etl.observability.run_context import RunContext
 from costco_etl.storage.paths import DB_PATH
 
@@ -24,6 +25,9 @@ async def run_pipeline(ctx: RunContext, demo: bool):
     with ctx.span("scrape_catalog", demo_mode=demo):
         products_flat, parsed_megamenu, scrape_metrics = await scrape_costco_catalog(ctx, demo=demo)
     ctx.report["stages"]["scrape_catalog"].update(scrape_metrics)
+
+    if len(products_flat) < 8500 and not demo:
+        raise RuntimeError("Safety Stop: Se obtuvieron menos productos del umbral crítico. Abortando rebuild para proteger la DB.")
 
     with ctx.span("category_structuring") as _:
 
@@ -83,6 +87,14 @@ async def run_pipeline(ctx: RunContext, demo: bool):
                 "delta_computed",
                 stage="compute_delta",
                 **delta["summary"],
+            )
+
+        with ctx.span("persist_arbitrage_daily"):
+            persist_arbitrage_daily(DB_PATH, delta)
+            ctx.event(
+                "arbitrage_persisted",
+                stage="persist_arbitrage_daily",
+                status="success"
             )
 
     ctx.report["delta"] = delta

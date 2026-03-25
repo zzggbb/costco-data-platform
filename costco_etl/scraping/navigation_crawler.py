@@ -107,12 +107,21 @@ async def crawl_category(
                 max_demo_pages=max_demo_pages,
             )
 
+    # ---------- VÁLVULA DE PAGINACIÓN INTERNA ----------
+    page_sem = asyncio.Semaphore(3)  # Máximo 3 páginas simultáneas por categoría
+
+    async def _bound_fetch_page(start_offset):
+        async with page_sem:
+            await asyncio.sleep(0.5)  # Micro-pausa entre páginas
+            return await _fetch_page(session, headers, category_url, start_offset)
+
     tasks = [
-        _fetch_page(session, headers, category_url, start)
+        _bound_fetch_page(start)
         for start in offsets
     ]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
+    # ---------------------------------------------------
 
     all_docs = list(docs)  # page 1 docs
 

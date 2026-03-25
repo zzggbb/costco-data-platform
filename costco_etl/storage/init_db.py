@@ -3,6 +3,16 @@ import sqlite3
 from pathlib import Path
 
 
+def _to_float(val) -> float | None:
+    """Safely coerce a value to float; returns None on failure."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def snapshot_previous_state(db_path: str) -> dict[str, dict]:
     """
     Reads all products from the existing database before a rebuild.
@@ -40,6 +50,7 @@ def compute_delta(old_snapshot: dict[str, dict], new_products: list[dict]) -> di
     """
     Compares previous product state against newly scraped products.
     Returns delta report with price_drops, price_increases, new_items, removed_items.
+    Includes Semantic Reconciliation to prevent SKU Churn (false positives).
     """
     new_lookup = {}
     for p in new_products:
@@ -48,38 +59,76 @@ def compute_delta(old_snapshot: dict[str, dict], new_products: list[dict]) -> di
             continue
         new_lookup[pid] = {
             "name": p.get("item_product_name") or p.get("name") or "UNKNOWN",
-            "min_price": _to_float(p.get("minSalePrice")),
-            "max_price": _to_float(p.get("maxSalePrice")),
+            "min_price": _to_float(p.get("minSalePrice") or p.get("item_location_pricing_salePrice") or p.get("item_location_pricing_listPrice")),
+            "max_price": _to_float(p.get("maxSalePrice") or p.get("item_location_pricing_salePrice")),
         }
 
     old_ids = set(old_snapshot.keys())
     new_ids = set(new_lookup.keys())
 
-    # New items (not in previous snapshot)
-    new_items = [
-        {"id": pid, "name": new_lookup[pid]["name"],
-         "min_price": new_lookup[pid]["min_price"]}
-        for pid in sorted(new_ids - old_ids)
-    ]
+    # 1. Identificación bruta
+    raw_new_ids = new_ids - old_ids
+    raw_removed_ids = old_ids - new_ids
 
-    # Removed items (in previous, not in new)
-    removed_items = [
-        {"id": pid, "name": old_snapshot[pid]["name"],
-         "last_min_price": old_snapshot[pid]["min_price"]}
-        for pid in sorted(old_ids - new_ids)
-    ]
+    # 2. Diccionario temporal para reconciliación semántica (por Nombre)
+    removed_by_name = {
+        old_snapshot[pid]["name"]: {"id": pid, "price": old_snapshot[pid].get("min_price")}
+        for pid in raw_removed_ids
+    }
 
-    # Price changes (items in both snapshots)
+    new_items = []
+    removed_items = []
     price_drops = []
     price_increases = []
 
+    # 3. Intercepción y cruce semántico para evitar SKU Churn
+    for pid in raw_new_ids:
+        new_name = new_lookup[pid]["name"]
+        new_price = new_lookup[pid]["min_price"]
+
+        # Si el "nuevo" producto tiene el mismo nombre que uno "borrado" (Rotación de SKU)
+        if new_name in removed_by_name:
+            old_price = removed_by_name[new_name]["price"]
+            del removed_by_name[new_name]  # Lo sacamos de las bajas
+
+            # Evaluamos si en la rotación hubo cambio de precio
+            if old_price is not None and new_price is not None and old_price != new_price:
+                delta_pct = round((new_price - old_price) / old_price * 100, 2) if old_price else 0
+                entry = {
+                    "id": pid,
+                    "name": new_name,
+                    "old_price": old_price,
+                    "new_price": new_price,
+                    "delta": round(new_price - old_price, 2),
+                    "delta_pct": delta_pct,
+                }
+                if new_price < old_price:
+                    price_drops.append(entry)
+                else:
+                    price_increases.append(entry)
+            continue  # Ya fue procesado como rotación, salteamos
+
+        # Si no es rotación, es un ítem nuevo real
+        new_items.append({
+            "id": pid,
+            "name": new_name,
+            "min_price": new_price
+        })
+
+    # 4. Los que quedaron en el diccionario son bajas reales
+    for name, data in removed_by_name.items():
+        removed_items.append({
+            "id": data["id"],
+            "name": name,
+            "last_min_price": data["price"]
+        })
+
+    # 5. Análisis de los productos que mantuvieron exactamente el mismo ID
     for pid in old_ids & new_ids:
         old_price = old_snapshot[pid].get("min_price")
         new_price = new_lookup[pid].get("min_price")
 
-        if old_price is None or new_price is None:
-            continue
-        if old_price == new_price:
+        if old_price is None or new_price is None or old_price == new_price:
             continue
 
         delta_pct = round((new_price - old_price) / old_price * 100, 2) if old_price else 0
@@ -134,6 +183,7 @@ def recreate_costco_db(db_path: str) -> None:
         conn.execute("DROP TABLE IF EXISTS products")
         conn.execute("DROP TABLE IF EXISTS categories")
         conn.execute("DROP TABLE IF EXISTS category_map")
+        conn.execute("DROP TABLE IF EXISTS arbitrage_daily")
 
         # ---------- PRODUCTS ----------
         conn.execute("""
@@ -180,16 +230,16 @@ def recreate_costco_db(db_path: str) -> None:
             )
         """)
 
+        # ---------- ARBITRAGE DAILY ----------
+        conn.execute("""
+            CREATE TABLE arbitrage_daily (
+                id INTEGER PRIMARY KEY,
+                payload TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
         conn.commit()
 
     finally:
         conn.close()
-
-
-def _to_float(value):
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (ValueError, TypeError):
-        return None
