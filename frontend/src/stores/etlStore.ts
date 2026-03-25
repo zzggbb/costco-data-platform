@@ -112,7 +112,7 @@ export const useEtlStore = create<EtlState>()((set, get) => ({
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
     try {
-      const res = await fetch(`/api/run-etl?demo=${demo}`, {
+      const res = await fetch(`/api/costco/run-etl?demo=${demo}`, {
         method: 'POST',
         signal: controller.signal,
       })

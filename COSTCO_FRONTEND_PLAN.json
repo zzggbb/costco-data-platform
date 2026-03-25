@@ -129,6 +129,6 @@
       "cleanup": "Delete App.css import from App.tsx. Remove all Vite starter content."
     },
     "zombie_protection": "Entire app wrapped in an ErrorBoundary component that catches render errors and shows a fallback UI with the error message instead of a white screen.",
-    "status": "TODO"
+    "status": "DONE"
   }
 ]
