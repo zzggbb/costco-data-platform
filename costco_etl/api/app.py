@@ -1,15 +1,15 @@
-import asyncio
+"""
+Costco Data ETL — Read-Only API
+All data is populated by the ETL cronjob. This API only reads.
+"""
+
 import sqlite3
 import json
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from costco_etl.storage.paths import DB_PATH
-from costco_etl.main_runner import run_pipeline
-from costco_etl.observability.run_context import RunContext
 from typing import Any
-from fastapi import Query
 
-_etl_lock = asyncio.Lock()
 
 def get_connection():
     conn = sqlite3.connect(str(DB_PATH), timeout=30)
@@ -17,19 +17,119 @@ def get_connection():
     return conn
 
 
-app = FastAPI(title="costco-data-etl api")
+app = FastAPI(title="Costco Data ETL — Read-Only API")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
+    allow_methods=["GET"],
     allow_headers=["*"],
 )
 
 
+# ---------- Health ----------
+
 @app.get("/")
 def root():
-    return {"status": "api ok"}
+    return {"status": "api ok", "mode": "read-only"}
+
+
+# ---------- System Status ----------
+
+@app.get("/system/status")
+def get_system_status():
+    """
+    Returns the last update timestamp from category_map (set during ETL run).
+    This is the 'scanned_at' the frontend displays.
+    """
+    try:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT updated_at FROM category_map ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+
+            product_count = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+            category_count = conn.execute("SELECT COUNT(*) FROM categories").fetchone()[0]
+
+            return {
+                "last_updated": row["updated_at"] if row else None,
+                "total_products": product_count,
+                "total_categories": category_count,
+            }
+
+        finally:
+            conn.close()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------- Catalog ----------
+
+@app.get("/catalog")
+def get_catalog(
+    search: str = Query("", description="Search products by name"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+) -> dict[str, Any]:
+    """
+    Paginated product catalog with optional text search.
+    Returns products sorted by review_count DESC.
+    """
+    try:
+        conn = get_connection()
+        try:
+            offset = (page - 1) * page_size
+
+            if search.strip():
+                pattern = f"%{search.strip()}%"
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM products WHERE name LIKE ?",
+                    (pattern,),
+                ).fetchone()[0]
+
+                rows = conn.execute(
+                    """
+                    SELECT id, name, min_price, max_price, rating, image_url, review_count
+                    FROM products
+                    WHERE name LIKE ?
+                    ORDER BY review_count DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (pattern, page_size, offset),
+                ).fetchall()
+            else:
+                total = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+
+                rows = conn.execute(
+                    """
+                    SELECT id, name, min_price, max_price, rating, image_url, review_count
+                    FROM products
+                    ORDER BY review_count DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (page_size, offset),
+                ).fetchall()
+
+            products = [dict(r) for r in rows]
+
+            return {
+                "products": products,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": max(1, -(-total // page_size)),
+            }
+
+        finally:
+            conn.close()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------- Categories ----------
 
 @app.get("/categories/tree")
 def get_category_tree():
@@ -45,20 +145,22 @@ def get_category_tree():
 
             return {
                 "category_tree": json.loads(row["payload"]),
-                "updated_at": row["updated_at"]
+                "updated_at": row["updated_at"],
             }
 
         finally:
             conn.close()
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/products/by-category")
 def get_products_by_category(category_url: str = Query(..., min_length=1)) -> dict[str, Any]:
     """
     Returns ALL products linked to the given category_url via product_categories.
-    category_url must match exactly what's stored (e.g. '/floral-arrangements.html').
     """
     try:
         conn = get_connection()
@@ -96,26 +198,19 @@ def get_products_by_category(category_url: str = Query(..., min_length=1)) -> di
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/categories/metrics")
 def get_category_metrics(category_url: str = Query(..., min_length=1)) -> dict[str, Any]:
     """
     Returns aggregated metrics for a given category_url from categories table.
     """
-
     try:
         conn = get_connection()
         try:
             row = conn.execute(
                 """
-                SELECT
-                    url,
-                    name,
-                    level,
-                    product_count,
-                    total_reviews,
-                    avg_rating,
-                    avg_min_price,
-                    sale_count
+                SELECT url, name, level, product_count, total_reviews,
+                       avg_rating, avg_min_price, sale_count
                 FROM categories
                 WHERE url = ?
                 """,
@@ -133,6 +228,8 @@ def get_category_metrics(category_url: str = Query(..., min_length=1)) -> dict[s
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ---------- Arbitrage / Business Intelligence ----------
 
 @app.get("/arbitrage/latest")
 def get_arbitrage_latest():
@@ -159,32 +256,3 @@ def get_arbitrage_latest():
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-ETL_TIMEOUT_S = 120
-
-
-@app.post("/run-etl")
-async def run_etl(demo: bool = False):
-    if _etl_lock.locked():
-        raise HTTPException(status_code=409, detail="ETL pipeline already running")
-
-    async with _etl_lock:
-        ctx = RunContext(run_name="etl_api_trigger", console=False)
-        try:
-            await asyncio.wait_for(
-                run_pipeline(ctx, demo=demo),
-                timeout=ETL_TIMEOUT_S,
-            )
-            report = ctx.finalize(status="success")
-        except asyncio.TimeoutError:
-            report = ctx.finalize(status="error")
-            raise HTTPException(
-                status_code=504,
-                detail=f"ETL pipeline timed out after {ETL_TIMEOUT_S}s",
-            )
-        except Exception as e:
-            ctx.finalize(status="error")
-            raise HTTPException(status_code=500, detail=str(e))
-
-    return report

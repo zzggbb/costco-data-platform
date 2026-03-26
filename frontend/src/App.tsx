@@ -1,27 +1,18 @@
-import { Component, useState } from 'react'
+import { Component, useState, useEffect } from 'react'
 import type { ReactNode, ErrorInfo } from 'react'
-import { UpdateButton } from './components/UpdateButton'
-import { MetricsBar } from './components/MetricsBar'
-import { ArbitrageTable } from './components/ArbitrageTable'
+import { CatalogExplorer } from './components/CatalogExplorer'
 import { BusinessIntelligence } from './components/BusinessIntelligence'
-import { useEtlStore } from './stores/etlStore'
-import type { NewItem, RemovedItem } from './stores/etlStore'
 import {
-  PlusCircleIcon,
-  MinusCircleIcon,
   MagnifyingGlassIcon,
   ChartBarSquareIcon,
+  ClockIcon,
+  SignalIcon,
 } from '@heroicons/react/24/outline'
 
 // ---- Formatting ----
 
-const usd = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-})
-
 const dateFmt = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
   month: 'short',
   day: 'numeric',
   year: 'numeric',
@@ -74,116 +65,38 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-// ---- New Items / Removed Items Panels ----
+// ---- System Status Hook ----
 
-function NewItemsPanel({ items }: { items: NewItem[] }) {
-  if (items.length === 0) return null
-
-  return (
-    <div className="rounded border border-border-subtle bg-surface-card p-4">
-      <h3 className="font-mono text-xs uppercase tracking-widest text-text-muted mb-3 flex items-center gap-2">
-        <PlusCircleIcon className="h-4 w-4 text-neon-green" />
-        New Items
-        <span className="text-text-dim">({items.length})</span>
-      </h3>
-      <div className="space-y-1.5">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center justify-between text-sm font-mono"
-          >
-            <span className="text-text-primary truncate max-w-md" title={item.name}>
-              {item.name}
-            </span>
-            <span className="text-neon-green font-tabular ml-4 shrink-0">
-              {item.min_price != null ? usd.format(item.min_price) : '--'}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+interface SystemStatus {
+  last_updated: string | null
+  total_products: number
+  total_categories: number
 }
 
-function RemovedItemsPanel({ items }: { items: RemovedItem[] }) {
-  if (items.length === 0) return null
+function useSystemStatus() {
+  const [status, setStatus] = useState<SystemStatus | null>(null)
 
-  return (
-    <div className="rounded border border-border-subtle bg-surface-card p-4">
-      <h3 className="font-mono text-xs uppercase tracking-widest text-text-muted mb-3 flex items-center gap-2">
-        <MinusCircleIcon className="h-4 w-4 text-blood-red" />
-        Removed Items
-        <span className="text-text-dim">({items.length})</span>
-      </h3>
-      <div className="space-y-1.5">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center justify-between text-sm font-mono"
-          >
-            <span className="text-text-muted line-through truncate max-w-md" title={item.name}>
-              {item.name}
-            </span>
-            <span className="text-blood-red font-tabular ml-4 shrink-0">
-              {item.last_min_price != null ? usd.format(item.last_min_price) : '--'}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/system/status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setStatus(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-// ---- Inventory Change Grid (New + Removed side by side) ----
-
-function InventoryChanges() {
-  const report = useEtlStore((s) => s.report)
-
-  const newItems = report?.delta?.new_items ?? []
-  const removedItems = report?.delta?.removed_items ?? []
-
-  if (newItems.length === 0 && removedItems.length === 0) return null
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <NewItemsPanel items={newItems} />
-      <RemovedItemsPanel items={removedItems} />
-    </div>
-  )
-}
-
-// ---- Footer ----
-
-function Footer() {
-  const report = useEtlStore((s) => s.report)
-
-  if (!report?.finished_at) return null
-
-  let formatted: string
-  try {
-    formatted = dateFmt.format(new Date(report.finished_at))
-  } catch {
-    formatted = report.finished_at
-  }
-
-  return (
-    <footer className="border-t border-zinc-800/50 py-4 text-center">
-      <p className="font-mono text-xs text-text-dim">
-        Last updated: {formatted}
-        <span className="mx-2 text-zinc-700">|</span>
-        Run: {report.run_id}
-        <span className="mx-2 text-zinc-700">|</span>
-        {report.duration_s.toFixed(2)}s total
-      </p>
-    </footer>
-  )
+  return status
 }
 
 // ---- Tab Definitions ----
 
 type TabId = 'catalog' | 'intelligence'
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+const TABS: { id: TabId; label: string; icon: ReactNode }[] = [
   {
     id: 'catalog',
     label: 'Explorar Catálogo',
@@ -200,17 +113,36 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('catalog')
+  const status = useSystemStatus()
+
+  let formattedUpdate = '—'
+  if (status?.last_updated) {
+    try {
+      formattedUpdate = dateFmt.format(new Date(status.last_updated))
+    } catch {
+      formattedUpdate = status.last_updated
+    }
+  }
 
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-surface-primary flex flex-col">
-        {/* ---- Sticky Header ---- */}
-        <header className="sticky top-0 z-50 bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-800">
+        {/* ---- Header ---- */}
+        <header className="sticky top-0 z-50 bg-zinc-900/90 backdrop-blur-sm border-b border-zinc-800">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
             <h1 className="font-mono text-sm sm:text-base font-bold uppercase tracking-widest text-text-primary">
               Costco Data ETL
             </h1>
-            <UpdateButton />
+
+            {/* System Status Badge */}
+            <div className="flex items-center gap-2 text-text-dim">
+              <SignalIcon className="h-3.5 w-3.5 text-neon-green" />
+              <span className="font-mono text-[11px] hidden sm:inline">
+                {status
+                  ? `${status.total_products.toLocaleString()} products · ${status.total_categories.toLocaleString()} categories`
+                  : 'Connecting…'}
+              </span>
+            </div>
           </div>
         </header>
 
@@ -219,15 +151,28 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
             <h2 className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-text-primary mb-3">
               Costco Data ETL{' '}
-              <span className="text-neon-green">&</span>{' '}
+              <span className="text-neon-green">&amp;</span>{' '}
               Market Intelligence
             </h2>
-            <p className="text-text-muted text-sm sm:text-base max-w-3xl leading-relaxed">
+            <p className="text-text-muted text-sm sm:text-base max-w-3xl leading-relaxed mb-6">
               Motor de extracción sobre más de 1,400 categorías y decenas de miles de productos
               de uno de los mayoristas más grandes del mundo. Explorá el catálogo en vivo o accedé
               a la unidad de Business Intelligence para detectar anomalías de inventario, caídas de
               precio y rotaciones reales en las últimas 24 horas.
             </p>
+
+            {/* Last Update — prominent */}
+            <div className="inline-flex items-center gap-2 bg-surface-card border border-border-subtle rounded-lg px-4 py-2.5">
+              <ClockIcon className="h-4 w-4 text-neon-green shrink-0" />
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-widest text-text-dim leading-none mb-0.5">
+                  Última Actualización del Sistema
+                </p>
+                <p className="font-mono text-sm text-text-primary font-bold">
+                  {formattedUpdate}
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -259,24 +204,19 @@ export default function App() {
         </nav>
 
         {/* ---- Tab Content ---- */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-          {activeTab === 'catalog' && (
-            <>
-              <MetricsBar />
-              <InventoryChanges />
-              <ArbitrageTable />
-            </>
-          )}
-
-          {activeTab === 'intelligence' && (
-            <BusinessIntelligence />
-          )}
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+          {activeTab === 'catalog' && <CatalogExplorer />}
+          {activeTab === 'intelligence' && <BusinessIntelligence />}
         </main>
 
         {/* ---- Footer ---- */}
-        <div className="max-w-7xl w-full mx-auto px-4 sm:px-6">
-          <Footer />
-        </div>
+        <footer className="border-t border-zinc-800/50 py-4">
+          <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 text-center">
+            <p className="font-mono text-xs text-text-dim">
+              Read-only interface · Data refreshed daily via automated ETL pipeline
+            </p>
+          </div>
+        </footer>
       </div>
     </ErrorBoundary>
   )
