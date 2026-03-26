@@ -239,7 +239,7 @@ export function BusinessIntelligence() {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch('/api/arbitrage/latest')
+        const res = await fetch('/api/costco/arbitrage/latest')
         if (!res.ok) {
           if (res.status === 404) {
             setError('No arbitrage data available yet. Run the ETL pipeline first to generate a delta report.')

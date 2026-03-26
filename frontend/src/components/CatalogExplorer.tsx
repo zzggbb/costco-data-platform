@@ -226,7 +226,7 @@ export function CatalogExplorer() {
         params.set('search', debouncedSearch.trim())
       }
 
-      const res = await fetch(`/api/catalog?${params}`)
+      const res = await fetch(`/api/costco/catalog?${params}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json: CatalogResponse = await res.json()
       setData(json)

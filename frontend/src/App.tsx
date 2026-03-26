@@ -78,7 +78,7 @@ function useSystemStatus() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/system/status')
+    fetch('/api/costco/system/status')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled && data) setStatus(data)
