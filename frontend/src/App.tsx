@@ -130,9 +130,13 @@ export default function App() {
         {/* ---- Header ---- */}
         <header className="sticky top-0 z-50 bg-zinc-900/90 backdrop-blur-sm border-b border-zinc-800">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-            <h1 className="font-mono text-sm sm:text-base font-bold uppercase tracking-widest text-text-primary">
-              Costco Data ETL
-            </h1>
+            <a
+              href="/"
+              className="font-mono text-sm sm:text-base font-bold uppercase tracking-widest text-text-primary hover:text-neon-green transition-colors flex items-center gap-2"
+            >
+              <span className="text-text-dim">&larr;</span>
+              leonardovila.com
+            </a>
 
             {/* System Status Badge */}
             <div className="flex items-center gap-2 text-text-dim">
@@ -155,7 +159,7 @@ export default function App() {
               Market Intelligence
             </h2>
             <p className="text-text-muted text-sm sm:text-base max-w-3xl leading-relaxed mb-6">
-              Motor de extracción sobre más de 1,400 categorías y decenas de miles de productos
+              Motor de extracción sobre más de 1,000 categorías y decenas de miles de productos
               de uno de los mayoristas más grandes del mundo. Explorá el catálogo en vivo o accedé
               a la unidad de Business Intelligence para detectar anomalías de inventario, caídas de
               precio y rotaciones reales en las últimas 24 horas.
@@ -213,7 +217,7 @@ export default function App() {
         <footer className="border-t border-zinc-800/50 py-4">
           <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 text-center">
             <p className="font-mono text-xs text-text-dim">
-              Read-only interface · Data refreshed daily via automated ETL pipeline
+              Interfaz de solo lectura · Datos actualizados diariamente via pipeline ETL automatizado
             </p>
           </div>
         </footer>
