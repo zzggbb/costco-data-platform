@@ -16,6 +16,12 @@ dist/
 # Local runtime artifacts
 logs/
 ignore_debug/
+*.gz
+deploy_fix.sh
+FIX_VPS.md
+README-costco.md
+.vscode/
+.claude/
 
 # Local databases
 costco.db
