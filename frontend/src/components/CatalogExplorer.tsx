@@ -337,6 +337,15 @@ export function CatalogExplorer() {
     loadProducts(rand)
   }
 
+  // ---- Explicit search (Buscar button / Enter key) ----
+  const handleSearch = () => {
+    const q = search.trim().toLowerCase()
+    if (!q || categories.length === 0) return
+    const exact = categories.find((c) => c.name.toLowerCase() === q)
+    const best = exact ?? categories.find((c) => c.name.toLowerCase().includes(q))
+    if (best) loadProducts(best)
+  }
+
   // ---- Sort toggle handler ----
   const handleSortClick = (field: SortField) => {
     if (field === sortField) {
@@ -368,48 +377,72 @@ export function CatalogExplorer() {
       </div>
 
       {/* ---- Search + Actions Row ---- */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search input with autocomplete */}
-        <div className="relative flex-1">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-text-dim pointer-events-none" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={search}
-            disabled={catLoading}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setShowSuggestions(true)
-            }}
-            onFocus={() => setShowSuggestions(true)}
-            placeholder={catLoading ? 'Loading categories…' : 'Search category (e.g. Rings, Appliances…)'}
-            className="w-full bg-surface-card border border-border-subtle rounded-lg pl-10 pr-4 py-3 font-mono text-sm text-text-primary placeholder-text-dim focus:outline-none focus:border-neon-green/50 focus:ring-1 focus:ring-neon-green/20 transition-colors"
-          />
+      <div className="flex flex-col md:flex-row gap-3 md:items-end">
+        {/* Search group: input + Buscar */}
+        <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
+          {/* Search input with autocomplete */}
+          <div className="relative flex-1 min-w-0">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-text-dim pointer-events-none" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={search}
+              disabled={catLoading}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setShowSuggestions(true)
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  setShowSuggestions(false)
+                  handleSearch()
+                }
+              }}
+              placeholder={catLoading ? 'Loading categories…' : 'Search category (e.g. Rings, Appliances…)'}
+              className="w-full bg-surface-card border border-border-subtle rounded-lg pl-10 pr-4 py-3 font-mono text-sm text-text-primary placeholder-text-dim focus:outline-none focus:border-neon-green/50 focus:ring-1 focus:ring-neon-green/20 transition-colors"
+            />
 
-          {/* Autocomplete dropdown */}
-          {showSuggestions && matches.length > 0 && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface-card border border-border-subtle rounded-lg shadow-xl max-h-64 overflow-y-auto">
-              {matches.map((cat) => (
-                <button
-                  key={cat.url}
-                  onClick={() => loadProducts(cat)}
-                  className="w-full text-left px-4 py-2.5 font-mono text-sm text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer border-b border-zinc-800/30 last:border-0"
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
-          )}
+            {/* Autocomplete dropdown */}
+            {showSuggestions && matches.length > 0 && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface-card border border-border-subtle rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                {matches.map((cat) => (
+                  <button
+                    key={cat.url}
+                    onClick={() => loadProducts(cat)}
+                    className="w-full text-left px-4 py-2.5 font-mono text-sm text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer border-b border-zinc-800/30 last:border-0"
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Buscar button (primary action) */}
+          <button
+            onClick={handleSearch}
+            disabled={catLoading || !search.trim()}
+            className="px-5 py-3 rounded-lg font-mono text-sm font-bold bg-neon-green text-black border border-neon-green hover:bg-neon-green/90 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            Buscar
+          </button>
         </div>
 
-        {/* Sorprendeme button */}
-        <button
-          onClick={handleSurprise}
-          disabled={categories.length === 0}
-          className="px-5 py-3 rounded-lg font-mono text-sm font-bold bg-neon-green/15 text-neon-green border border-neon-green/30 hover:bg-neon-green/25 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap shrink-0"
-        >
-          Sorprendeme!
-        </button>
+        {/* Random category group (labeled container) */}
+        <div className="flex flex-col gap-1 shrink-0">
+          <span className="text-[10px] uppercase tracking-wider text-text-dim font-mono px-1">
+            Selecciona categoría al azar
+          </span>
+          <button
+            onClick={handleSurprise}
+            disabled={categories.length === 0}
+            className="px-5 py-3 rounded-lg font-mono text-sm font-bold bg-neon-green/15 text-neon-green border border-neon-green/30 hover:bg-neon-green/25 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+          >
+            Sorprendeme!
+          </button>
+        </div>
       </div>
 
       {/* ---- Close suggestions on outside click ---- */}
