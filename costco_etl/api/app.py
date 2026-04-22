@@ -8,8 +8,7 @@ import json
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from costco_etl.storage.paths import DB_PATH
-from typing import Any
-
+from typing import Any, Optional
 
 def get_connection():
     conn = sqlite3.connect(str(DB_PATH), timeout=30)
@@ -156,15 +155,18 @@ def get_category_tree():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/products/by-category")
-def get_products_by_category(category_url: str = Query(..., min_length=1)) -> dict[str, Any]:
+def get_products_by_category(
+    category_url: str = Query(..., min_length=1),
+    limit_products: Optional[int] = Query(None, description="Tajo opcional de los primeros X productos")
+) -> dict[str, Any]:
     """
-    Returns ALL products linked to the given category_url via product_categories.
+    Returns products linked to the given category_url via product_categories.
     """
     try:
         conn = get_connection()
         try:
+            # Tu infra queda intacta. El ORDER BY ya acomoda los reviews.
             rows = conn.execute(
                 """
                 SELECT
@@ -186,9 +188,13 @@ def get_products_by_category(category_url: str = Query(..., min_length=1)) -> di
 
             products = [dict(r) for r in rows]
 
+            # EL PARCHE BÁSICO: Aplicamos el tajo en memoria si se solicita.
+            if limit_products is not None and limit_products > 0:
+                products = products[:limit_products]
+
             return {
                 "category_url": category_url,
-                "count": len(products),
+                "count": len(products), # Ahora refleja el conteo real del tajo
                 "products": products,
             }
 
