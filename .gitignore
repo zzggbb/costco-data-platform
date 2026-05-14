@@ -22,6 +22,8 @@ FIX_VPS.md
 README-costco.md
 .vscode/
 .claude/
+infra/
+ejemplos_respuesta_api/
 
 # Local databases
 costco.db

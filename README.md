@@ -1,5 +1,7 @@
 # Costco Data ETL
 
+**Live:** https://leonardovila.com/costco-data/
+
 Pipeline end-to-end de scraping, almacenamiento y visualizacion del catalogo completo de Costco.com. Extrae +10,000 productos y +1,000 categorias diariamente, computa deltas de precios e inventario, y los expone a traves de una API read-only y un dashboard de Business Intelligence.
 
 ---
