@@ -1,4 +1,4 @@
-def run_parse_megamenu(megamenu):
+def run_parse_megamenu(megamenu, category=None):
     """
     Recibe el JSON completo del endpoint megamenu
     Devuelve una lista plana jerárquica con:
@@ -34,6 +34,7 @@ def run_parse_megamenu(megamenu):
                 traverse(child, new_path, level + 1)
 
     for root_node in megamenu["megaMenu"]:
-        traverse(root_node, [], 1)
+        if category is None or (root_node['url'] == f'/{category}.html'):
+          traverse(root_node, [], 1)
 
     return flat_categories

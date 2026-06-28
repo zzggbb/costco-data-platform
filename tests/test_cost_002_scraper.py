@@ -35,7 +35,7 @@ async def main():
     import costco_etl.scraping.costco_scraper as scraper_mod
     _original = scraper_mod.scrape_costco_catalog
 
-    async def _patched(ctx, demo=False, demo_url="/jewelry.html"):
+    async def _patched(ctx):
         # Call original with demo=False so it resolves all targets,
         # but intercept to limit crawl_targets.
         # We'll replicate the setup steps and override.
@@ -75,7 +75,6 @@ async def main():
                     category_url=cat["url"],
                     category_count=cat["count"],
                     ctx=ctx,
-                    demo=False,
                 )
                 for cat in crawl_targets
             ]

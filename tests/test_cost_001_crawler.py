@@ -70,7 +70,6 @@ async def main():
             category_url=TEST_CATEGORY,
             category_count=num_found,
             ctx=ctx,
-            demo=False,
         )
         t_async = time.perf_counter() - t_start
 

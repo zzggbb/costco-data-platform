@@ -157,7 +157,7 @@ def test_compute_delta_empty_old():
 async def test_pipeline_integration():
     """Full pipeline produces delta in report."""
     ctx = RunContext(run_name="cost_007_test_run1", console=False)
-    await run_pipeline(ctx, demo=True)
+    await run_pipeline(ctx, category='jewelry')
     report = ctx.finalize(status="success")
 
     assert "delta" in report, "delta missing from report"
@@ -174,12 +174,12 @@ async def test_pipeline_integration():
 async def test_pipeline_second_run_stable():
     """Second run with same data should show zero changes (or near-zero from real-time flux)."""
     ctx = RunContext(run_name="cost_007_test_run2", console=False)
-    await run_pipeline(ctx, demo=True)
+    await run_pipeline(ctx, category='jewelry')
     report = ctx.finalize(status="success")
 
     delta = report["delta"]
     s = delta["summary"]
-    # Same demo category, same data — should be mostly stable
+    # Same category, same data — should be mostly stable
     # Allow small flux from real-time inventory
     total_changes = s["new_count"] + s["removed_count"] + s["price_drop_count"] + s["price_increase_count"]
 

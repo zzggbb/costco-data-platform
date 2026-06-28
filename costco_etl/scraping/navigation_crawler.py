@@ -62,8 +62,6 @@ async def crawl_category(
     category_url: str,
     category_count: int,
     ctx: RunContext,
-    demo: bool = False,
-    max_demo_pages: int = 3,
 ) -> list:
 
     headers = _build_headers(api_key)
@@ -92,20 +90,6 @@ async def crawl_category(
 
     # ---- Fan-out: all remaining pages concurrently ----
     offsets = list(range(ROWS_PER_PAGE, num_found, ROWS_PER_PAGE))
-
-    if demo:
-        max_remaining = max_demo_pages - 1  # page 1 already fetched
-        offsets = offsets[:max_remaining]
-
-        if len(offsets) < total_pages - 1:
-            ctx.event(
-                "demo_pagination_stopped",
-                stage="scrape_catalog",
-                category=category_url,
-                stopped_at_page=len(offsets) + 1,
-                total_available_pages=total_pages,
-                max_demo_pages=max_demo_pages,
-            )
 
     # ---------- VÁLVULA DE PAGINACIÓN INTERNA ----------
     page_sem = asyncio.Semaphore(3)  # Máximo 3 páginas simultáneas por categoría

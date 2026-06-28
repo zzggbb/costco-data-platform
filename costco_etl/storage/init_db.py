@@ -49,7 +49,7 @@ def snapshot_previous_state(db_path: str) -> dict[str, dict]:
 def compute_delta(old_snapshot: dict[str, dict], new_products: list[dict]) -> dict:
     """
     Compares previous product state against newly scraped products.
-    Returns delta report with price_drops, price_increases, new_items, removed_items.
+    Returns delta report with price_decreases, price_increases, new_items, removed_items.
     Includes Semantic Reconciliation to prevent SKU Churn (false positives).
     """
     new_lookup = {}
@@ -78,7 +78,7 @@ def compute_delta(old_snapshot: dict[str, dict], new_products: list[dict]) -> di
 
     new_items = []
     removed_items = []
-    price_drops = []
+    price_decreases = []
     price_increases = []
 
     # 3. Intercepción y cruce semántico para evitar SKU Churn
@@ -103,7 +103,7 @@ def compute_delta(old_snapshot: dict[str, dict], new_products: list[dict]) -> di
                     "delta_pct": delta_pct,
                 }
                 if new_price < old_price:
-                    price_drops.append(entry)
+                    price_decreases.append(entry)
                 else:
                     price_increases.append(entry)
             continue  # Ya fue procesado como rotación, salteamos
@@ -143,27 +143,27 @@ def compute_delta(old_snapshot: dict[str, dict], new_products: list[dict]) -> di
         }
 
         if new_price < old_price:
-            price_drops.append(entry)
+            price_decreases.append(entry)
         else:
             price_increases.append(entry)
 
-    # Sort price drops by largest absolute savings first
-    price_drops.sort(key=lambda x: x["delta"])
+    # Sort price decreases by largest absolute savings first
+    price_decreases.sort(key=lambda x: x["delta"])
     price_increases.sort(key=lambda x: x["delta"], reverse=True)
 
     return {
         "new_items": new_items,
         "removed_items": removed_items,
-        "price_drops": price_drops,
+        "price_decreases": price_decreases,
         "price_increases": price_increases,
         "summary": {
             "previous_count": len(old_ids),
             "current_count": len(new_ids),
             "new_count": len(new_items),
             "removed_count": len(removed_items),
-            "price_drop_count": len(price_drops),
+            "price_decrease_count": len(price_decreases),
             "price_increase_count": len(price_increases),
-            "unchanged_count": len(old_ids & new_ids) - len(price_drops) - len(price_increases),
+            "price_unchanged_count": len(old_ids & new_ids) - len(price_decreases) - len(price_increases),
         },
     }
 
@@ -183,15 +183,17 @@ def recreate_costco_db(db_path: str) -> None:
         conn.execute("DROP TABLE IF EXISTS products")
         conn.execute("DROP TABLE IF EXISTS categories")
         conn.execute("DROP TABLE IF EXISTS category_map")
-        conn.execute("DROP TABLE IF EXISTS arbitrage_daily")
+        conn.execute("DROP TABLE IF EXISTS arbitrage")
 
         # ---------- PRODUCTS ----------
         conn.execute("""
             CREATE TABLE products (
                 id TEXT PRIMARY KEY,
+                brand TEXT,
                 name TEXT NOT NULL,
                 min_price REAL,
                 max_price REAL,
+                url TEXT NOT NULL,
                 rating REAL,
                 image_url TEXT,
                 review_count INTEGER
@@ -232,7 +234,7 @@ def recreate_costco_db(db_path: str) -> None:
 
         # ---------- ARBITRAGE DAILY ----------
         conn.execute("""
-            CREATE TABLE arbitrage_daily (
+            CREATE TABLE arbitrage (
                 id INTEGER PRIMARY KEY,
                 payload TEXT NOT NULL,
                 updated_at TEXT NOT NULL

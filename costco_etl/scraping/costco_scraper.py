@@ -1,5 +1,7 @@
+import json
 import asyncio
 import aiohttp
+from pathlib import Path
 
 from costco_etl.scraping.get_key import run_get_key
 from costco_etl.scraping.get_megamenu import run_get_megamenu
@@ -35,8 +37,7 @@ def _sanitize_unusual_terminators(obj):
     return obj
 
 
-async def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: str = "/jewelry.html"):
-
+async def scrape_costco_catalog(ctx: RunContext, category=None):
     timeout = aiohttp.ClientTimeout(total=30, sock_read=15)
     connector = aiohttp.TCPConnector(limit=15)
 
@@ -54,20 +55,25 @@ async def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: s
             stage="scrape_catalog",
             level="INFO",
             api_key=api_key,
-            demo_mode=demo
+            category=category
         )
 
         # -------------------------
         # STEP 2 — MEGAMENU
         # -------------------------
         megamenu = await run_get_megamenu(session, api_key)
+        print(
+          json.dumps(megamenu, indent=2, sort_keys=True),
+          file=open(Path(__file__).parents[2] / "megamenu-dump.json", 'w')
+        )
+
         if not megamenu:
             raise RuntimeError("Megamenu not found")
 
         # -------------------------
         # STEP 3 — PARSE MEGAMENU (pure CPU)
         # -------------------------
-        parsed = run_parse_megamenu(megamenu)
+        parsed = run_parse_megamenu(megamenu, category)
 
         if not parsed:
             raise RuntimeError("Parsed megamenu returned empty list")
@@ -77,21 +83,10 @@ async def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: s
             stage="scrape_catalog",
             level="INFO",
             total_categories=len(parsed),
-            demo_mode=demo
+            category=category
         )
 
-        # -------------------------
-        # DEMO MODE FILTER
-        # -------------------------
-        if demo:
-            crawl_targets = [c for c in parsed if c.get("url") == demo_url]
-
-            if not crawl_targets:
-                raise RuntimeError(f"Demo category {demo_url} not found in megamenu")
-
-            print(f"[DEMO MODE] Crawling only category: {demo_url}")
-        else:
-            crawl_targets = parsed
+        crawl_targets = parsed
 
         ctx.event(
             "crawl_targets_resolved",
@@ -105,19 +100,18 @@ async def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: s
         # -------------------------
         sem = asyncio.Semaphore(5)
 
-        async def bound_crawl(category):
+        async def bound_crawl(category_obj):
             async with sem:
                 await asyncio.sleep(1.5)
                 return await crawl_category(
                     session=session,
                     api_key=api_key,
-                    category_url=category["url"],
-                    category_count=category["count"],
+                    category_url=category_obj["url"],
+                    category_count=category_obj["count"],
                     ctx=ctx,
-                    demo=demo,
                 )
 
-        coros = [bound_crawl(category) for category in crawl_targets]
+        coros = [bound_crawl(category_obj) for category_obj in crawl_targets]
 
         results = await asyncio.gather(*coros, return_exceptions=True)
 
@@ -192,6 +186,24 @@ async def scrape_costco_catalog(ctx: RunContext, demo: bool = False, demo_url: s
     # STEP 6 — SANITIZE
     # -------------------------
     sanitized_products = _sanitize_unusual_terminators(deduped_products)
+
+    for product in sanitized_products:
+        slug = ''
+        for input_char in product['name']:
+            if input_char.isalnum():
+              output_char = input_char.lower()
+            else:
+              if input_char in [' ', '-']:
+                output_char = '-'
+              else:
+                output_char = ''
+
+            slug += output_char
+
+        product['slug'] = slug
+        product['url'] = f"https://www.costco.com/p/-/{slug}/{product['group_id']}"
+
+
     return sanitized_products, parsed, {
         "total_raw": raw_count,
         "total_unique": unique_count,

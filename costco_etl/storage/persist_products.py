@@ -17,14 +17,17 @@ def persist_products(db_path: str, products_flat: list[dict]) -> None:
             if not product_id:
                 continue
 
+            brand = product.get("Brand_attr", [None])[0]
             name = product.get("item_product_name") or product.get("name") or "UNKNOWN"
 
             rows.append(
                 (
                     product_id,
+                    brand,
                     name,
                     _safe_float(product.get("minSalePrice") or product.get("item_location_pricing_salePrice") or product.get("item_location_pricing_listPrice")),
                     _safe_float(product.get("maxSalePrice") or product.get("item_location_pricing_salePrice")),
+                    product['url'],
                     _safe_float(product.get("item_review_ratings")),
                     product.get("item_product_primary_image") or product.get("image"),
                     _safe_int(product.get("item_product_review_count")),
@@ -35,14 +38,16 @@ def persist_products(db_path: str, products_flat: list[dict]) -> None:
             """
             INSERT OR REPLACE INTO products (
                 id,
+                brand,
                 name,
                 min_price,
                 max_price,
+                url,
                 rating,
                 image_url,
                 review_count
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows
         )

@@ -239,12 +239,12 @@ def get_category_metrics(category_url: str = Query(..., min_length=1)) -> dict[s
 
 @app.get("/arbitrage/latest")
 def get_arbitrage_latest():
-    """Returns the most recent arbitrage delta report from arbitrage_daily."""
+    """Returns the most recent arbitrage delta report from arbitrage."""
     try:
         conn = get_connection()
         try:
             row = conn.execute(
-                "SELECT payload, updated_at FROM arbitrage_daily ORDER BY id DESC LIMIT 1"
+                "SELECT payload, updated_at FROM arbitrage ORDER BY id DESC LIMIT 1"
             ).fetchone()
 
             if not row:

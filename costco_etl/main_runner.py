@@ -1,3 +1,4 @@
+import json
 import argparse
 import asyncio
 
@@ -9,9 +10,9 @@ from costco_etl.storage.persist_products import persist_products
 from costco_etl.storage.persist_product_categories import persist_product_categories
 from costco_etl.storage.persist_category_map import persist_category_map
 from costco_etl.storage.persist_category_metrics import persist_category_metrics
-from costco_etl.storage.persist_arbitrage_daily import persist_arbitrage_daily
+from costco_etl.storage.persist_arbitrage import persist_arbitrage
 from costco_etl.observability.run_context import RunContext
-from costco_etl.storage.paths import DB_PATH
+from costco_etl.storage.paths import REPO_ROOT, DB_PATH
 
 def count_nodes(tree: dict) -> int:
     count = 0
@@ -20,13 +21,12 @@ def count_nodes(tree: dict) -> int:
         count += count_nodes(node.get("children", {}))
     return count
 
-async def run_pipeline(ctx: RunContext, demo: bool):
-
-    with ctx.span("scrape_catalog", demo_mode=demo):
-        products_flat, parsed_megamenu, scrape_metrics = await scrape_costco_catalog(ctx, demo=demo)
+async def run_pipeline(ctx: RunContext, category=None):
+    with ctx.span("scrape_catalog", category=category):
+        products_flat, parsed_megamenu, scrape_metrics = await scrape_costco_catalog(ctx, category)
     ctx.report["stages"]["scrape_catalog"].update(scrape_metrics)
 
-    if len(products_flat) < 8500 and not demo:
+    if len(products_flat) < 8500 and category is None:
         raise RuntimeError("Safety Stop: Se obtuvieron menos productos del umbral crítico. Abortando rebuild para proteger la DB.")
 
     with ctx.span("category_structuring") as _:
@@ -89,23 +89,33 @@ async def run_pipeline(ctx: RunContext, demo: bool):
                 **delta["summary"],
             )
 
-        with ctx.span("persist_arbitrage_daily"):
-            persist_arbitrage_daily(DB_PATH, delta)
+        with ctx.span("persist_arbitrage"):
+            persist_arbitrage(DB_PATH, delta)
             ctx.event(
                 "arbitrage_persisted",
-                stage="persist_arbitrage_daily",
+                stage="persist_arbitrage",
                 status="success"
             )
 
     ctx.report["delta"] = delta
 
+    product_json_dir = REPO_ROOT / "products_json"
+    product_json_dir.mkdir(exist_ok=True, parents=True)
+    for file in product_json_dir.iterdir():
+      file.unlink()
+    for product in products_flat:
+        path = product_json_dir / (product['slug'] + '.json')
+        with open(path, 'w') as f:
+          json_string = json.dumps(product, indent=2, sort_keys=True)
+          print(json_string, file=f)
+
 def main():
     parser = argparse.ArgumentParser(description="Costco ETL Runner")
 
     parser.add_argument(
-        "--demo",
-        action="store_true",
-        help="Run Costco scraper in demo mode (single category)"
+      "--category",
+      action="store",
+      help="Run scraper (recursively) on a single category, rather than all categories"
     )
 
     args = parser.parse_args()
@@ -113,7 +123,7 @@ def main():
     ctx = RunContext(run_name="costco_data_etl_main")
 
     try:
-        asyncio.run(run_pipeline(ctx, demo=args.demo))
+        asyncio.run(run_pipeline(ctx, category=args.category))
         ctx.finalize(status="success")
     except Exception:
         ctx.finalize(status="error")

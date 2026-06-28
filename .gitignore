@@ -24,6 +24,7 @@ README-costco.md
 .claude/
 infra/
 ejemplos_respuesta_api/
+products_json/
 
 # Local databases
 costco.db

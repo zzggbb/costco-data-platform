@@ -74,7 +74,7 @@ Browse the full Costco catalog by category with real-time search, sorting (by re
 
 ### Business Intelligence
 
-A second tab surfaces the daily delta report as a BI dashboard. KPI cards show catalog size, net change, price drops, and price increases at a glance. Collapsible, sortable tables break down each movement type — drill into which products dropped in price, which ones are new, and which ones disappeared.
+A second tab surfaces the delta report as a BI dashboard. KPI cards show catalog size, net change, price drops, and price increases at a glance. Collapsible, sortable tables break down each movement type — drill into which products dropped in price, which ones are new, and which ones disappeared.
 
 ---
 
@@ -129,7 +129,7 @@ Five tables, zero complexity:
 - **categories** — ~1,000 category nodes with aggregated metrics
 - **product_categories** — Many-to-many junction table
 - **category_map** — The full category hierarchy as a single JSON document
-- **arbitrage_daily** — The latest delta report as a single JSON document
+- **arbitrage** — The latest delta report as a single JSON document
 
 ---
 
