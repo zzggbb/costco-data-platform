@@ -28,7 +28,7 @@ def _safe_json(obj: Any) -> Any:
 @dataclass
 class RunContext:
     run_name: str # nombre humano (ej: “tv_websocket_scraper”, “macro_snapshot”).
-    run_id: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d_%H-%M-%S")) 
+    run_id: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
     logs_dir: Path = field(default_factory=lambda: LOGS_DIR)
     log_path: Path = field(init=False) # se calcula en __post_init__.
     report_path: Path = field(init=False)
@@ -40,6 +40,7 @@ class RunContext:
     console_flush: bool = False   # si querés ver output inmediato sí o sí
 
     def __post_init__(self) -> None:
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = self.logs_dir / f"RUN_{self.run_id}_{self.run_name}.jsonl"
         self._log_fh = open(self.log_path, "a", encoding="utf-8")
         self.report_path = self.logs_dir / f"REPORT_{self.run_id}_{self.run_name}.json"
@@ -54,7 +55,7 @@ class RunContext:
         self.event("run_start", level="INFO", run_name=self.run_name) # Emite un evento run_start
 
     # ts, run_id, level, event, stage, y el resto de data sanitizado. Luego lo escribe como UNA línea JSON + \n.
-    # Este es el corazón: “append-only log”. 
+    # Este es el corazón: “append-only log”.
     def event(self, name: str, *, level: str = "INFO", stage: Optional[str] = None, **data: Any) -> None:
         rec = {
             "ts": _now_iso(),
@@ -77,7 +78,7 @@ class RunContext:
             # fallback defensivo (por si alguien instancia mal)
             self._log_fh = open(self.log_path, "a", encoding="utf-8")
         self._log_fh.write(line)
-    
+
     def stage_ok(self, stage: str, **data: Any) -> None:
         payload = {"status": "ok", **_safe_json(data)}
         self.report["stages"][stage] = payload # Guarda en report["stages"][stage]
@@ -139,7 +140,7 @@ class RunContext:
             status = "error"
         dt = time.perf_counter() - self._t0 # Calcula duración con perf_counter
         self.report["finished_at"] = _now_iso() # Setea finished_at, duration_s, status
-        self.report["duration_s"] = round(dt, 6) 
+        self.report["duration_s"] = round(dt, 6)
         self.report["status"] = status
         self.event("run_finish", level="INFO" if status == "success" else "ERROR", status=status, duration_s=self.report["duration_s"]) # Emite evento run_finish con status/duración
         if self._log_fh is not None:
@@ -150,7 +151,7 @@ class RunContext:
                 self._log_fh = None
         self.write_report()
         return self.report
-    
+
     def __del__(self) -> None:
         try:
             if self._log_fh is not None:
