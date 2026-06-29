@@ -41,6 +41,8 @@ class RunContext:
 
     def __post_init__(self) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
+        for file in self.logs_dir.iterdir():
+            file.unlink()
         self.log_path = self.logs_dir / f"RUN_{self.run_id}_{self.run_name}.jsonl"
         self._log_fh = open(self.log_path, "a", encoding="utf-8")
         self.report_path = self.logs_dir / f"REPORT_{self.run_id}_{self.run_name}.json"

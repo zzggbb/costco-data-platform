@@ -59,6 +59,7 @@ def compute_delta(old_snapshot: dict[str, dict], new_products: list[dict]) -> di
             continue
         new_lookup[pid] = {
             "name": p.get("item_product_name") or p.get("name") or "UNKNOWN",
+            "url": p['url'],
             "min_price": _to_float(p.get("minSalePrice") or p.get("item_location_pricing_salePrice") or p.get("item_location_pricing_listPrice")),
             "max_price": _to_float(p.get("maxSalePrice") or p.get("item_location_pricing_salePrice")),
         }
@@ -97,6 +98,7 @@ def compute_delta(old_snapshot: dict[str, dict], new_products: list[dict]) -> di
                 entry = {
                     "id": pid,
                     "name": new_name,
+                    "url": new_lookup[pid]['url'],
                     "old_price": old_price,
                     "new_price": new_price,
                     "delta": round(new_price - old_price, 2),
@@ -136,6 +138,7 @@ def compute_delta(old_snapshot: dict[str, dict], new_products: list[dict]) -> di
         entry = {
             "id": pid,
             "name": new_lookup[pid]["name"],
+            "url": new_lookup[pid]["url"],
             "old_price": old_price,
             "new_price": new_price,
             "delta": round(new_price - old_price, 2),
